@@ -50,7 +50,7 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'dairy-planner-produc
 
 const DairyGanttPlanner = () => {
   // --- Configuration ---
-  const START_HOUR = 2; // UPDATED: Starts at 2:00 AM
+  const START_HOUR = 2; // Starts at 2:00 AM
   const END_HOUR = 22;  // 10 PM
   const TOTAL_HOURS = END_HOUR - START_HOUR;
 
@@ -59,22 +59,21 @@ const DairyGanttPlanner = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null); // Track saving errors
   const [tasks, setTasks] = useState([
-    { id: 1, resource: 'Team A', task: 'Morning Milking', start: '02:30', end: '05:30', color: 'bg-blue-500' },
-    { id: 2, resource: 'Tanker 1', task: 'Milk Collection', start: '05:00', end: '06:30', color: 'bg-green-500' },
-    { id: 3, resource: 'Processing', task: 'Pasteurization', start: '06:00', end: '09:00', color: 'bg-indigo-500' },
-    { id: 4, resource: 'Team B', task: 'Feeding Cows', start: '09:00', end: '10:30', color: 'bg-yellow-500' },
-    { id: 5, resource: 'Dr. Smith', task: 'Vet Inspection', start: '10:00', end: '12:00', color: 'bg-red-500' },
-    { id: 6, resource: 'Logistics', task: 'City Delivery', start: '11:30', end: '15:30', color: 'bg-purple-500' },
-    { id: 7, resource: 'Team A', task: 'Evening Milking', start: '16:00', end: '19:00', color: 'bg-blue-500' },
-    { id: 8, resource: 'Cleaning', task: 'Equipment Sanitize', start: '19:30', end: '21:00', color: 'bg-gray-500' },
+    { id: 1, resource: 'Team A', task: 'Morning Milking', start: '02:30', end: '05:30' },
+    { id: 2, resource: 'Tanker 1', task: 'Milk Collection', start: '05:00', end: '06:30' },
+    { id: 3, resource: 'Processing', task: 'Pasteurization', start: '06:00', end: '09:00' },
+    { id: 4, resource: 'Team B', task: 'Feeding Cows', start: '09:00', end: '10:30' },
+    { id: 5, resource: 'Dr. Smith', task: 'Vet Inspection', start: '10:00', end: '12:00' },
+    { id: 6, resource: 'Logistics', task: 'City Delivery', start: '11:30', end: '15:30' },
+    { id: 7, resource: 'Team A', task: 'Evening Milking', start: '16:00', end: '19:00' },
+    { id: 8, resource: 'Cleaning', task: 'Equipment Sanitize', start: '19:30', end: '21:00' },
   ]);
 
   const [newTask, setNewTask] = useState({
     resource: '',
     task: '',
     start: '08:00',
-    end: '09:00',
-    color: 'bg-blue-500'
+    end: '09:00'
   });
 
   const [filterText, setFilterText] = useState('');
@@ -156,6 +155,25 @@ const DairyGanttPlanner = () => {
 
   // --- Logic Helpers ---
 
+  // Generate a consistent color based on the resource string
+  const getResourceColor = (resourceName) => {
+    if (!resourceName) return 'bg-slate-400';
+    
+    const colors = [
+      'bg-blue-500', 'bg-green-500', 'bg-indigo-500', 'bg-yellow-500', 
+      'bg-red-500', 'bg-purple-500', 'bg-pink-500', 'bg-teal-500', 
+      'bg-orange-500', 'bg-cyan-600', 'bg-lime-600', 'bg-rose-500'
+    ];
+    
+    let hash = 0;
+    for (let i = 0; i < resourceName.length; i++) {
+      hash = resourceName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+  };
+
   const timeToDecimal = (timeStr) => {
     if (!timeStr) return 0;
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -167,6 +185,9 @@ const DairyGanttPlanner = () => {
   const filteredTasks = tasks.filter(task => 
     task.resource.toLowerCase().includes(filterText.toLowerCase())
   );
+  
+  // Get Unique Resources for Legend
+  const uniqueResources = Array.from(new Set(tasks.map(t => t.resource))).filter(Boolean).sort();
 
   // --- Event Handlers ---
 
@@ -182,8 +203,7 @@ const DairyGanttPlanner = () => {
       resource: filterText || '',
       task: '',
       start: '08:00',
-      end: '09:00',
-      color: 'bg-blue-500'
+      end: '09:00'
     };
     
     const index = tasks.findIndex(t => t.id === targetTaskId);
@@ -201,12 +221,12 @@ const DairyGanttPlanner = () => {
     const taskToAdd = {
       ...newTask,
       id,
-      resource: newTask.resource || filterText 
+      resource: newTask.resource || filterText
     };
 
     const updatedTasks = [...tasks, taskToAdd];
     updateTasks(updatedTasks);
-    setNewTask({ resource: '', task: '', start: '08:00', end: '09:00', color: 'bg-blue-500' });
+    setNewTask({ resource: '', task: '', start: '08:00', end: '09:00' });
   };
 
   const deleteTask = (id) => {
@@ -250,18 +270,10 @@ const DairyGanttPlanner = () => {
         const line = lines[i].trim();
         if (!line) continue;
         
-        // UPDATED REGEX: Handles quotes gracefully
-        // Looks for: Non-commas, (optional quote) content (optional quote), Non-commas, Non-commas
         const regex = /^(.*?),(?:\"([^\"]*)\"|([^,]*)),(.*?),(.*?)$/;
         const matches = line.match(regex);
 
         if (matches) {
-            // Group 1: Resource
-            // Group 2: Task (if quoted)
-            // Group 3: Task (if NOT quoted)
-            // Group 4: Start
-            // Group 5: End
-            
             const taskName = matches[2] || matches[3] || "Unnamed Task";
 
             newTasks.push({
@@ -269,8 +281,7 @@ const DairyGanttPlanner = () => {
                 resource: matches[1].trim(),
                 task: taskName.trim(),
                 start: matches[4].trim(),
-                end: matches[5].trim(),
-                color: 'bg-blue-500'
+                end: matches[5].trim()
             });
             successCount++;
         }
@@ -454,7 +465,7 @@ const DairyGanttPlanner = () => {
 
             {filteredTasks.length === 0 ? <div className="h-20"></div> : filteredTasks.map((task) => (
                 <div key={`gantt-${task.id}`} className="h-12 border-b border-slate-100 relative w-full hover:bg-slate-50 transition-colors">
-                    <TaskBar start={task.start} end={task.end} color={task.color} taskName={task.task} />
+                    <TaskBar start={task.start} end={task.end} color={getResourceColor(task.resource)} taskName={task.task} />
                 </div>
             ))}
             <div className="h-full w-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA0MCAwIEwgMCAwIDAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2YxZjVZjkiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIgLz48L3N2Zz4=')] opacity-50"></div>
@@ -479,10 +490,14 @@ const DairyGanttPlanner = () => {
                </span>
             )}
          </div>
-         <div className="flex gap-4">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-500 rounded-sm"></span> Milking</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Logistics</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-500 rounded-sm"></span> Processing</span>
+         {/* Dynamic Resource Legend */}
+         <div className="flex gap-4 overflow-x-auto max-w-[60%] custom-scrollbar pb-1">
+            {uniqueResources.map(res => (
+              <span key={res} className="flex items-center gap-1 whitespace-nowrap">
+                <span className={`w-3 h-3 rounded-sm ${getResourceColor(res)}`}></span> 
+                {res}
+              </span>
+            ))}
          </div>
       </div>
     </div>
