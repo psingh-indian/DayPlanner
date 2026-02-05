@@ -1,17 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calendar, Clock, Truck, Milk, User, Briefcase, PlusCircle, Search, Save, Download, Upload } from 'lucide-react';
+import { Plus, Trash2, Calendar, Clock, Truck, Milk, User, Briefcase, PlusCircle, Search, Save, Download, Upload, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 // --- Firebase Imports ---
-// Ensure you have installed firebase: 'npm install firebase'
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
 import { getFirestore, doc, onSnapshot, setDoc } from "firebase/firestore";
 
 // --- Configuration Strategy ---
-// This function allows the app to run in 3 environments without code changes:
-// 1. Canvas Preview (uses internal globals)
-// 2. Vite Local Dev (uses .env.local)
-// 3. Netlify Production (uses Netlify Environment Variables)
 const getFirebaseConfig = () => {
   // 1. Canvas Environment
   if (typeof __firebase_config !== 'undefined') {
@@ -19,7 +14,6 @@ const getFirebaseConfig = () => {
   }
   
   // 2. Vite / Netlify Environment
-  // We use optional chaining to prevent crashes in environments where import.meta is undefined
   try {
     if (import.meta.env && import.meta.env.VITE_FIREBASE_API_KEY) {
       return {
@@ -52,22 +46,22 @@ if (firebaseConfig) {
   }
 }
 
-// Use a production app ID if the global one isn't set
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'dairy-planner-production';
 
 const DairyGanttPlanner = () => {
   // --- Configuration ---
-  const START_HOUR = 4; // 4 AM
+  const START_HOUR = 2; // UPDATED: Starts at 2:00 AM
   const END_HOUR = 22;  // 10 PM
   const TOTAL_HOURS = END_HOUR - START_HOUR;
 
   // --- State ---
   const [user, setUser] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null); // Track saving errors
   const [tasks, setTasks] = useState([
-    { id: 1, resource: 'Team A', task: 'Morning Milking', start: '04:30', end: '07:30', color: 'bg-blue-500' },
-    { id: 2, resource: 'Tanker 1', task: 'Milk Collection', start: '07:00', end: '08:30', color: 'bg-green-500' },
-    { id: 3, resource: 'Processing', task: 'Pasteurization', start: '08:00', end: '11:00', color: 'bg-indigo-500' },
+    { id: 1, resource: 'Team A', task: 'Morning Milking', start: '02:30', end: '05:30', color: 'bg-blue-500' },
+    { id: 2, resource: 'Tanker 1', task: 'Milk Collection', start: '05:00', end: '06:30', color: 'bg-green-500' },
+    { id: 3, resource: 'Processing', task: 'Pasteurization', start: '06:00', end: '09:00', color: 'bg-indigo-500' },
     { id: 4, resource: 'Team B', task: 'Feeding Cows', start: '09:00', end: '10:30', color: 'bg-yellow-500' },
     { id: 5, resource: 'Dr. Smith', task: 'Vet Inspection', start: '10:00', end: '12:00', color: 'bg-red-500' },
     { id: 6, resource: 'Logistics', task: 'City Delivery', start: '11:30', end: '15:30', color: 'bg-purple-500' },
@@ -101,6 +95,7 @@ const DairyGanttPlanner = () => {
         }
       } catch (e) {
         console.error("Auth Error:", e);
+        setSaveError("Auth Failed: Check console");
       }
     };
     initAuth();
@@ -123,8 +118,14 @@ const DairyGanttPlanner = () => {
       } else {
         saveTasksToCloud(tasks);
       }
+      setSaveError(null); // Clear errors on successful read
     }, (error) => {
       console.error("Sync Error:", error);
+      if (error.code === 'permission-denied') {
+        setSaveError("Permission Denied: Check Firestore Rules");
+      } else {
+        setSaveError("Database Error: Did you create the Firestore Database in Console?");
+      }
     });
 
     return () => unsubscribe();
@@ -134,6 +135,7 @@ const DairyGanttPlanner = () => {
   const saveTasksToCloud = async (updatedTasks) => {
     if (!user || !db) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
       await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'day_planner_data', 'schedule'), {
         tasks: updatedTasks,
@@ -141,6 +143,7 @@ const DairyGanttPlanner = () => {
       });
     } catch (e) {
       console.error("Save Error:", e);
+      setSaveError("Save Failed");
     } finally {
       setTimeout(() => setIsSaving(false), 800);
     }
@@ -241,30 +244,44 @@ const DairyGanttPlanner = () => {
       const text = e.target.result;
       const lines = text.split('\n');
       const newTasks = [];
+      let successCount = 0;
       
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const matches = line.match(/^([^,]+),"([^"]+)",([^,]+),([^,]+)$/);
+        
+        // UPDATED REGEX: Handles quotes gracefully
+        // Looks for: Non-commas, (optional quote) content (optional quote), Non-commas, Non-commas
+        const regex = /^(.*?),(?:\"([^\"]*)\"|([^,]*)),(.*?),(.*?)$/;
+        const matches = line.match(regex);
 
-        if (matches && matches.length === 5) {
+        if (matches) {
+            // Group 1: Resource
+            // Group 2: Task (if quoted)
+            // Group 3: Task (if NOT quoted)
+            // Group 4: Start
+            // Group 5: End
+            
+            const taskName = matches[2] || matches[3] || "Unnamed Task";
+
             newTasks.push({
                 id: Date.now() + i,
                 resource: matches[1].trim(),
-                task: matches[2].trim(),
-                start: matches[3].trim(),
-                end: matches[4].trim(),
+                task: taskName.trim(),
+                start: matches[4].trim(),
+                end: matches[5].trim(),
                 color: 'bg-blue-500'
             });
+            successCount++;
         }
       }
       
       if (newTasks.length > 0) {
-          if(confirm(`Found ${newTasks.length} tasks. Replace current schedule?`)) {
+          if(confirm(`Successfully parsed ${successCount} tasks. Replace current schedule?`)) {
              updateTasks(newTasks);
           }
       } else {
-          alert("Could not parse CSV.");
+          alert("Could not parse CSV. Ensure format is: Resource,Task,Start,End");
       }
     };
     reader.readAsText(file);
@@ -293,14 +310,13 @@ const DairyGanttPlanner = () => {
     );
   };
 
-  // Environment Check for User Feedback
+  // Environment Check
   if (!firebaseConfig) {
       return (
         <div className="flex h-screen items-center justify-center bg-slate-100 flex-col gap-4 p-8 text-center">
             <h1 className="text-2xl font-bold text-slate-800">Configuration Missing</h1>
             <p className="text-slate-600 max-w-md">
                 No Firebase configuration found. <br/><br/>
-                <strong>Running Locally?</strong> Create a <code>.env.local</code> file.<br/>
                 <strong>Deployed on Netlify?</strong> Add Environment Variables in Site Settings.
             </p>
         </div>
@@ -430,8 +446,10 @@ const DairyGanttPlanner = () => {
                 <div key={`grid-${hour}`} className="flex-1 border-l border-slate-100 h-full"></div>
               ))}
             </div>
-            <div className="absolute top-0 bottom-0 border-l-2 border-red-400 border-dashed z-20 pointer-events-none opacity-50" style={{ left: `${((10.25 - START_HOUR) / TOTAL_HOURS) * 100}%` }}>
-              <div className="bg-red-500 text-white text-[9px] px-1 rounded absolute -top-0 -left-6">10:15</div>
+            
+            {/* Hypothetical Current Time: 04:15 AM (adjusted for visual testing) */}
+             <div className="absolute top-0 bottom-0 border-l-2 border-red-400 border-dashed z-20 pointer-events-none opacity-50" style={{ left: `${((4.25 - START_HOUR) / TOTAL_HOURS) * 100}%` }}>
+              <div className="bg-red-500 text-white text-[9px] px-1 rounded absolute -top-0 -left-6">04:15</div>
             </div>
 
             {filteredTasks.length === 0 ? <div className="h-20"></div> : filteredTasks.map((task) => (
@@ -446,13 +464,26 @@ const DairyGanttPlanner = () => {
       
       <div className="bg-white border-t border-slate-200 px-6 py-2 text-xs text-slate-500 flex items-center justify-between">
          <div className="flex gap-4">
+            {/* Status Indicators */}
+            {saveError ? (
+               <span className="flex items-center gap-1 text-red-600 font-bold animate-pulse">
+                 <AlertCircle className="w-3 h-3" /> {saveError}
+               </span>
+            ) : user ? (
+               <span className="flex items-center gap-1 text-green-600 font-medium">
+                 <CheckCircle2 className="w-3 h-3" /> Database Connected
+               </span>
+            ) : (
+              <span className="flex items-center gap-1 text-slate-400">
+                 Connecting...
+               </span>
+            )}
+         </div>
+         <div className="flex gap-4">
             <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-500 rounded-sm"></span> Milking</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Logistics</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-500 rounded-sm"></span> Processing</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-yellow-500 rounded-sm"></span> Feeding</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-500 rounded-sm"></span> Veterinary</span>
          </div>
-         <div>System Status: Online</div>
       </div>
     </div>
   );
